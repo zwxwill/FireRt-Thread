@@ -43,36 +43,7 @@ struct rt_list_node
 };
 typedef struct rt_list_node rt_list_t;                  /**< Type for lists. */
 
-/**
- * Thread structure
- */
-struct rt_thread
-{
-    /* rt object */
-    char        name[RT_NAME_MAX];                      /**< the name of thread */
-    rt_uint8_t  type;                                   /**< type of object */
-    rt_uint8_t  flags;                                  /**< thread's flags */
-	
-	rt_list_t   list;                                   /**< the object list */
-	rt_list_t   tlist;                                    /* 线程链表节点 */
-	
-    /* stack point and entry */
-    void       *sp;                                     /**< stack point */
-    void       *entry;                                  /**< entry */
-    void       *parameter;                              /**< parameter */
-    void       *stack_addr;                             /**< stack address */
-    rt_uint32_t stack_size;                             /**< stack size */
 
-	rt_ubase_t remaining_tick;                          /* 用于实现线程阻塞 */
-	
-    rt_uint8_t  current_priority;                       /**< current priority */
-    rt_uint8_t  init_priority;                          /**< initialized priority */
-	rt_uint32_t number_mask;
-    /* error code */
-    rt_err_t    error;                                  /**< error code */
-    rt_uint8_t  stat;                                   /**< thread status */	
-};
-typedef struct rt_thread *rt_thread_t;
 
 
 /* RT-Thread error code definitions */
@@ -156,7 +127,85 @@ typedef struct rt_object *rt_object_t;                  /**< Type for kernel obj
 #define RT_THREAD_STAT_SIGNAL_PENDING   0x40                /**< signals is held and it has not been procressed */
 #define RT_THREAD_STAT_SIGNAL_MASK      0xf0
 
+#define RT_TIMER_SKIP_LIST_LEVEL          1
+#define RT_TIMER_SKIP_LIST_MASK         0x3
 
+
+/**
+ * timer structure
+ */
+struct rt_timer
+{
+    struct rt_object parent;                            /**< inherit from rt_object */
+
+    rt_list_t        row[RT_TIMER_SKIP_LIST_LEVEL];
+
+    void (*timeout_func)(void *parameter);              /**< timeout function */
+    void            *parameter;                         /**< timeout function's parameter */
+
+    rt_tick_t        init_tick;                         /**< timer timeout tick */
+    rt_tick_t        timeout_tick;                      /**< timeout tick */
+};
+typedef struct rt_timer *rt_timer_t;
+
+
+/**
+ * Thread structure
+ */
+struct rt_thread
+{
+    /* rt object */
+    char        name[RT_NAME_MAX];                      /**< the name of thread */
+    rt_uint8_t  type;                                   /**< type of object */
+    rt_uint8_t  flags;                                  /**< thread's flags */
+	
+	rt_list_t   list;                                   /**< the object list */
+	rt_list_t   tlist;                                    /* 线程链表节点 */
+	
+    /* stack point and entry */
+    void       *sp;                                     /**< stack point */
+    void       *entry;                                  /**< entry */
+    void       *parameter;                              /**< parameter */
+    void       *stack_addr;                             /**< stack address */
+    rt_uint32_t stack_size;                             /**< stack size */
+
+	rt_ubase_t init_tick; /* 初始时间片 */
+	rt_ubase_t remaining_tick; /* 剩余时间片 */
+	
+    rt_uint8_t  current_priority;                       /**< current priority */
+    rt_uint8_t  init_priority;                          /**< initialized priority */
+	rt_uint32_t number_mask;
+    /* error code */
+    rt_err_t    error;                                  /**< error code */
+    rt_uint8_t  stat;                                   /**< thread status */	
+
+	struct rt_timer thread_timer;                       /**< built-in thread timer */
+};
+typedef struct rt_thread *rt_thread_t;
+
+
+/**
+ * clock & timer macros
+ */
+#define RT_TIMER_FLAG_DEACTIVATED       0x0             /**< timer is deactive */
+#define RT_TIMER_FLAG_ACTIVATED         0x1             /**< timer is active */
+#define RT_TIMER_FLAG_ONE_SHOT          0x0             /**< one shot timer */
+#define RT_TIMER_FLAG_PERIODIC          0x2             /**< periodic timer */
+
+#define RT_TIMER_FLAG_HARD_TIMER        0x0             /**< hard timer,the timer's callback function will be called in tick isr. */
+#define RT_TIMER_FLAG_SOFT_TIMER        0x4             /**< soft timer,the timer's callback function will be called in timer thread. */
+
+#define RT_TIMER_CTRL_SET_TIME          0x0             /**< set timer control command */
+#define RT_TIMER_CTRL_GET_TIME          0x1             /**< get timer control command */
+#define RT_TIMER_CTRL_SET_ONESHOT       0x2             /**< change timer to one shot */
+#define RT_TIMER_CTRL_SET_PERIODIC      0x3             /**< change timer to periodic */
+
+
+/* maximum value of base type */
+#define RT_UINT8_MAX                    0xff            /**< Maxium number of UINT8 */
+#define RT_UINT16_MAX                   0xffff          /**< Maxium number of UINT16 */
+#define RT_UINT32_MAX                   0xffffffff      /**< Maxium number of UINT32 */
+#define RT_TICK_MAX                     RT_UINT32_MAX   /**< Maxium number of tick */
 
 
 #endif

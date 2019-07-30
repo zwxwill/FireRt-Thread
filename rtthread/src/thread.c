@@ -10,13 +10,15 @@ extern rt_uint8_t *rt_hw_stack_init(void       *tentry,     /* 线程入口 */
                              void       *parameter,  /* 线程形参 */
                              rt_uint8_t *stack_addr); /* 栈顶地址 */
 
+							 
 rt_err_t rt_thread_init(struct rt_thread *thread,
 						const char       *name,
                         void (*entry)(void *parameter),
                         void             *parameter,
                         void             *stack_start,
                         rt_uint32_t       stack_size,
-                        rt_uint8_t        priority)
+                        rt_uint8_t        priority,
+                        rt_uint32_t tick)
 {
     /* init thread object */
     rt_object_init((rt_object_t)thread, RT_Object_Class_Thread, name);	
@@ -43,10 +45,80 @@ rt_err_t rt_thread_init(struct rt_thread *thread,
     thread->error = RT_EOK;
     thread->stat  = RT_THREAD_INIT;
 
+	/* 时间片相关 */
+	thread->init_tick = tick;
+	thread->remaining_tick = tick;
+
+	/* 初始化线程定时器 */
+	rt_timer_init(&(thread->thread_timer), /* 静态定时器对象 */
+                  thread->name,
+                  rt_thread_timeout,
+                  thread,
+                  0,
+                  RT_TIMER_FLAG_ONE_SHOT);	
+
 	return RT_EOK;
 } 
 
+rt_err_t rt_thread_suspend(rt_thread_t thread)
+{
+    register rt_base_t stat;
+    register rt_base_t temp;
 
+
+    if ((thread->stat & RT_THREAD_STAT_MASK) != RT_THREAD_READY)
+    {
+        return -RT_ERROR;
+    }
+
+    /* disable interrupt */
+    temp = rt_hw_interrupt_disable();
+
+    /* change thread stat */
+	thread->stat = RT_THREAD_SUSPEND  ;
+    rt_schedule_remove_thread(thread);
+    
+
+    /* stop thread timer anyway */
+    rt_timer_stop(&(thread->thread_timer));
+
+    /* enable interrupt */
+    rt_hw_interrupt_enable(temp);
+
+    return RT_EOK;
+}						
+
+rt_err_t rt_thread_sleep(rt_tick_t tick)
+{
+    register rt_base_t temp;
+    struct rt_thread *thread;
+
+    /* disable interrupt */
+    temp = rt_hw_interrupt_disable();
+	
+    /* set to current thread */
+    thread = rt_thread_self();
+
+    /* suspend thread */
+    rt_thread_suspend(thread);
+
+    /* reset the timeout of thread timer and start it */
+    rt_timer_control(&(thread->thread_timer), RT_TIMER_CTRL_SET_TIME, &tick);
+    rt_timer_start(&(thread->thread_timer));
+
+    /* enable interrupt */
+    rt_hw_interrupt_enable(temp);
+
+    rt_schedule();
+
+//    /* clear error number of this thread to RT_EOK */
+//    if (thread->error == -RT_ETIMEOUT)
+//        thread->error = RT_EOK;
+
+    return RT_EOK;
+}						
+
+#if 0
 void rt_thread_delay(rt_tick_t tick)
 {
 #if 0
@@ -77,7 +149,12 @@ void rt_thread_delay(rt_tick_t tick)
 	rt_schedule();
 #endif
 }
-
+#else
+rt_err_t rt_thread_delay(rt_tick_t tick)
+{
+	return rt_thread_sleep(tick);
+}
+#endif
 rt_thread_t rt_thread_self(void)
 {
 	return rt_current_thread;
@@ -126,6 +203,28 @@ rt_err_t rt_thread_startup(rt_thread_t thread)
     }
 
     return RT_EOK;	
+}
+
+
+
+
+void rt_thread_timeout(void *parameter)
+{
+    struct rt_thread *thread;
+
+    thread = (struct rt_thread *)parameter;
+	
+    /* set error number */
+    thread->error = -RT_ETIMEOUT;
+
+    /* remove from suspend list */
+    rt_list_remove(&(thread->tlist));
+
+    /* insert to schedule ready list */
+    rt_schedule_insert_thread(thread);
+
+    /* do schedule */
+    rt_schedule();
 }
 
 
